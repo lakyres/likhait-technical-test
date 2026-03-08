@@ -2,7 +2,7 @@
  * Custom hook for managing expense form state and validation
  */
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { ExpenseFormData } from "../types";
 import { formatDate } from "../utils/expenseUtils";
 
@@ -23,10 +23,10 @@ export function useExpenseForm({ initialData, onSubmit }: UseExpenseFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (field: keyof ExpenseFormData, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev: ExpenseFormData) => ({ ...prev, [field]: value }));
     // Clear error for this field when user starts typing
     if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }));
+      setErrors((prev: Partial<ExpenseFormData>) => ({ ...prev, [field]: undefined }));
     }
   };
 

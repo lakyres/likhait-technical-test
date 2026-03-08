@@ -1,0 +1,133 @@
+[DEPRECATION] `require "dotenv/rails-now"` is deprecated. Use `require "dotenv/load"` instead.
+<internal:/usr/local/lib/ruby/3.3.0/rubygems/core_ext/kernel_require.rb>:37:in `require'
+/usr/bin/env: ‘ruby\r’: No such file or directory
+/usr/bin/env: use -[v]S to pass options in shebang lines
+FFFFFFF
+
+Failures:
+
+  1) Api::Categories GET /api/categories returns all categories
+     Failure/Error: let!(:food) { Category.create!(name: "Food") }
+
+     ActiveRecord::RecordNotUnique:
+       Mysql2::Error: Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `block in query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `handle_interrupt'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `query'
+     # ./spec/requests/api/categories_spec.rb:5:in `block (3 levels) in <main>'
+     # ------------------
+     # --- Caused by: ---
+     # Mysql2::Error:
+     #   Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     #   /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+
+  2) Api::Categories GET /api/categories returns categories in alphabetical order
+     Failure/Error: let!(:food) { Category.create!(name: "Food") }
+
+     ActiveRecord::RecordNotUnique:
+       Mysql2::Error: Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `block in query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `handle_interrupt'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `query'
+     # ./spec/requests/api/categories_spec.rb:5:in `block (3 levels) in <main>'
+     # ------------------
+     # --- Caused by: ---
+     # Mysql2::Error:
+     #   Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     #   /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+
+  3) Api::Expenses GET /api/expenses returns all expenses with category information
+     Failure/Error: let!(:food_category) { Category.create!(name: "Food") }
+
+     ActiveRecord::RecordNotUnique:
+       Mysql2::Error: Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `block in query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `handle_interrupt'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `query'
+     # ./spec/requests/api/expenses_spec.rb:4:in `block (2 levels) in <main>'
+     # ------------------
+     # --- Caused by: ---
+     # Mysql2::Error:
+     #   Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     #   /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+
+  4) Api::Expenses GET /api/expenses returns expenses in descending order by created_at
+     Failure/Error: let!(:food_category) { Category.create!(name: "Food") }
+
+     ActiveRecord::RecordNotUnique:
+       Mysql2::Error: Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `block in query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `handle_interrupt'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `query'
+     # ./spec/requests/api/expenses_spec.rb:4:in `block (2 levels) in <main>'
+     # ------------------
+     # --- Caused by: ---
+     # Mysql2::Error:
+     #   Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     #   /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+
+  5) Api::Expenses POST /api/expenses with valid parameters creates a new expense
+     Failure/Error: let!(:food_category) { Category.create!(name: "Food") }
+
+     ActiveRecord::RecordNotUnique:
+       Mysql2::Error: Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `block in query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `handle_interrupt'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `query'
+     # ./spec/requests/api/expenses_spec.rb:4:in `block (2 levels) in <main>'
+     # ------------------
+     # --- Caused by: ---
+     # Mysql2::Error:
+     #   Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     #   /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+
+  6) Api::Expenses POST /api/expenses with invalid parameters with negative amounts
+     Failure/Error: let!(:food_category) { Category.create!(name: "Food") }
+
+     ActiveRecord::RecordNotUnique:
+       Mysql2::Error: Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `block in query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `handle_interrupt'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `query'
+     # ./spec/requests/api/expenses_spec.rb:4:in `block (2 levels) in <main>'
+     # ------------------
+     # --- Caused by: ---
+     # Mysql2::Error:
+     #   Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     #   /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+
+  7) Api::Expenses POST /api/expenses with invalid parameters with empty descriptions
+     Failure/Error: let!(:food_category) { Category.create!(name: "Food") }
+
+     ActiveRecord::RecordNotUnique:
+       Mysql2::Error: Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `block in query'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `handle_interrupt'
+     # /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:145:in `query'
+     # ./spec/requests/api/expenses_spec.rb:4:in `block (2 levels) in <main>'
+     # ------------------
+     # --- Caused by: ---
+     # Mysql2::Error:
+     #   Duplicate entry 'Food' for key 'categories.index_categories_on_name'
+     #   /usr/local/bundle/gems/mysql2-0.5.7/lib/mysql2/client.rb:146:in `_query'
+
+Finished in 0.80069 seconds (files took 17.35 seconds to load)
+7 examples, 7 failures
+
+Failed examples:
+
+rspec ./spec/requests/api/categories_spec.rb:9 # Api::Categories GET /api/categories returns all categories
+rspec ./spec/requests/api/categories_spec.rb:18 # Api::Categories GET /api/categories returns categories in alphabetical order
+rspec ./spec/requests/api/expenses_spec.rb:11 # Api::Expenses GET /api/expenses returns all expenses with category information
+rspec ./spec/requests/api/expenses_spec.rb:19 # Api::Expenses GET /api/expenses returns expenses in descending order by created_at
+rspec ./spec/requests/api/expenses_spec.rb:41 # Api::Expenses POST /api/expenses with valid parameters creates a new expense
+rspec ./spec/requests/api/expenses_spec.rb:54 # Api::Expenses POST /api/expenses with invalid parameters with negative amounts
+rspec ./spec/requests/api/expenses_spec.rb:71 # Api::Expenses POST /api/expenses with invalid parameters with empty descriptions
+

@@ -48,9 +48,9 @@ export function useExpenseForm({ initialData, onSubmit }: UseExpenseFormProps) {
     if (!formData.date) {
       newErrors.date = "Date is required";
     } else {
-      const selectedDate = new Date(formData.date);
+      // Parse the date string in the local timezone to avoid UTC offset issues
+      const selectedDate = new Date(formData.date + "T00:00:00");
       const today = new Date();
-      // Set hours to 0 to only compare the actual calendar day
       today.setHours(0, 0, 0, 0);
 
       if (selectedDate > today) {

@@ -1,0 +1,1242 @@
+﻿diff --git a/backend/Gemfile b/backend/Gemfile
+index 01b2911..e042408 100644
+--- a/backend/Gemfile
++++ b/backend/Gemfile
+@@ -39,6 +39,8 @@ group :development, :test do
+   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
+   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
+ 
++  gem "dotenv-rails", require: "dotenv/rails-now"
++
+   # Static analysis for security vulnerabilities [https://brakemanscanner.org/]
+   gem "brakeman", require: false
+ 
+diff --git a/backend/Gemfile.lock b/backend/Gemfile.lock
+index 1c94184..10b2bcc 100644
+--- a/backend/Gemfile.lock
++++ b/backend/Gemfile.lock
+@@ -96,6 +96,10 @@ GEM
+       irb (~> 1.10)
+       reline (>= 0.3.8)
+     diff-lcs (1.6.2)
++    dotenv (3.2.0)
++    dotenv-rails (3.2.0)
++      dotenv (= 3.2.0)
++      railties (>= 6.1)
+     drb (2.2.3)
+     erb (6.0.1)
+     erubi (1.13.1)
+@@ -133,7 +137,8 @@ GEM
+     minitest (6.0.1)
+       prism (~> 1.5)
+     msgpack (1.8.0)
+-    mysql2 (0.5.6)
++    mysql2 (0.5.7)
++      bigdecimal
+     net-imap (0.6.2)
+       date
+       net-protocol
+@@ -146,6 +151,8 @@ GEM
+     nio4r (2.7.5)
+     nokogiri (1.19.0-arm64-darwin)
+       racc (~> 1.4)
++    nokogiri (1.19.0-x64-mingw-ucrt)
++      racc (~> 1.4)
+     parallel (1.27.0)
+     parser (3.3.10.0)
+       ast (~> 2.4.1)
+@@ -266,6 +273,8 @@ GEM
+     tsort (0.2.0)
+     tzinfo (2.0.6)
+       concurrent-ruby (~> 1.0)
++    tzinfo-data (1.2026.1)
++      tzinfo (>= 1.0.0)
+     unicode-display_width (3.2.0)
+       unicode-emoji (~> 4.1)
+     unicode-emoji (4.1.0)
+@@ -278,12 +287,14 @@ GEM
+ 
+ PLATFORMS
+   arm64-darwin
++  x64-mingw-ucrt
+ 
+ DEPENDENCIES
+   bootsnap
+   brakeman
+   database_cleaner-active_record
+   debug
++  dotenv-rails
+   factory_bot_rails
+   faker
+   mysql2 (~> 0.5)
+diff --git a/backend/app/controllers/api/categories_controller.rb b/backend/app/controllers/api/categories_controller.rb
+index fcaec3f..13c18cc 100644
+--- a/backend/app/controllers/api/categories_controller.rb
++++ b/backend/app/controllers/api/categories_controller.rb
+@@ -3,4 +3,20 @@ class Api::CategoriesController < ApplicationController
+     categories = Category.order(:name)
+     render json: categories
+   end
++
++  def create
++    category = Category.new(category_params)
++
++    if category.save
++      render json: category, status: :created
++    else
++      render json: { errors: category.errors.full_messages }, status: :unprocessable_entity
++    end
++  end
++
++  private
++
++  def category_params
++    params.require(:category).permit(:name)
++  end
+ end
+diff --git a/backend/app/controllers/api/expenses_controller.rb b/backend/app/controllers/api/expenses_controller.rb
+index 07f590d..ed0fb72 100644
+--- a/backend/app/controllers/api/expenses_controller.rb
++++ b/backend/app/controllers/api/expenses_controller.rb
+@@ -1,6 +1,6 @@
+ class Api::ExpensesController < ApplicationController
+   def index
+-    expenses = Expense.includes(:category).order(created_at: :desc)
++    expenses = Expense.includes(:category).order(date: :desc, created_at: :desc)
+ 
+     if params[:year].present? && params[:month].present?
+       year = params[:year].to_i
+@@ -9,7 +9,7 @@ class Api::ExpensesController < ApplicationController
+       start_date = Date.new(year, month, 1)
+       end_date = start_date.end_of_month
+ 
+-      expenses = expenses.where(created_at: start_date.beginning_of_day..end_date.end_of_day)
++      expenses = expenses.where(date: start_date..end_date)
+     end
+ 
+     render json: expenses.map { |expense| format_expense(expense) }
+diff --git a/backend/app/models/expense.rb b/backend/app/models/expense.rb
+index a161c45..45c1c06 100644
+--- a/backend/app/models/expense.rb
++++ b/backend/app/models/expense.rb
+@@ -1,3 +1,14 @@
+ class Expense < ApplicationRecord
+   belongs_to :category
++
++  validates :description, :amount, :date, presence: true
++  validate :date_cannot_be_in_the_future # Check professional logic here!
++
++  private
++
++  def date_cannot_be_in_the_future
++    if date.present? && date > Date.current
++      errors.add(:date, "cannot be in the future. You can't spend money tomorrow today!")
++    end
++  end
+ end
+diff --git a/backend/config/database.yml b/backend/config/database.yml
+index b2889a0..762a4d8 100644
+--- a/backend/config/database.yml
++++ b/backend/config/database.yml
+@@ -4,7 +4,7 @@ default: &default
+   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+   host: <%= ENV.fetch("DATABASE_HOST") { "localhost" } %>
+   username: <%= ENV.fetch("DATABASE_USERNAME") { "root" } %>
+-  password: <%= ENV.fetch("DATABASE_PASSWORD") { "" } %>
++  password: <%= ENV.fetch("DATABASE_PASSWORD") %>
+   database: <%= ENV.fetch("DATABASE_NAME") { "expense_system_development" } %>
+ 
+ development:
+@@ -16,3 +16,4 @@ test:
+ 
+ production:
+   <<: *default
++  database: expense_system_production
+diff --git a/backend/config/routes.rb b/backend/config/routes.rb
+index f1c0206..8d76008 100644
+--- a/backend/config/routes.rb
++++ b/backend/config/routes.rb
+@@ -13,7 +13,7 @@ Rails.application.routes.draw do
+   # root "posts#index"
+ 
+   namespace :api do
+-    resources :categories, only: [ :index ]
++    resources :categories, only: [ :index, :create ]
+     resources :expenses, only: [ :index, :create, :update, :destroy ]
+   end
+ end
+diff --git a/frontend/package-lock.json b/frontend/package-lock.json
+index c21d3f1..2664377 100644
+--- a/frontend/package-lock.json
++++ b/frontend/package-lock.json
+@@ -48,6 +48,7 @@
+       "resolved": "https://registry.npmjs.org/@babel/core/-/core-7.29.0.tgz",
+       "integrity": "sha512-CGOfOJqWjg2qW/Mb6zNsDm+u5vFQ8DxXfbM09z69p5Z6+mE1ikP2jUXw+j42Pf1XTYED2Rni5f95npYeuwMDQA==",
+       "dev": true,
++      "peer": true,
+       "dependencies": {
+         "@babel/code-frame": "^7.29.0",
+         "@babel/generator": "^7.29.0",
+@@ -283,6 +284,74 @@
+         "node": ">=6.9.0"
+       }
+     },
++    "node_modules/@esbuild/aix-ppc64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.21.5.tgz",
++      "integrity": "sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "aix"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/android-arm": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.21.5.tgz",
++      "integrity": "sha512-vCPvzSjpPHEi1siZdlvAlsPxXl7WbOVUBBAowWug4rJHb68Ox8KualB+1ocNvT5fjv6wpkX6o/iEpbDrf68zcg==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/android-arm64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.21.5.tgz",
++      "integrity": "sha512-c0uX9VAUBQ7dTDCjq+wdyGLowMdtR/GoC2U5IYk/7D1H1JYC0qseD7+11iMP2mRLN9RcCMRcjC4YMclCzGwS/A==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/android-x64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.21.5.tgz",
++      "integrity": "sha512-D7aPRUUNHRBwHxzxRvp856rjUHRFW1SdQATKXH2hqA0kAZb1hKmi02OpYRacl0TxIGz/ZmXWlbZgjwWYaCakTA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
+     "node_modules/@esbuild/darwin-arm64": {
+       "version": "0.21.5",
+       "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.21.5.tgz",
+@@ -299,6 +368,312 @@
+         "node": ">=12"
+       }
+     },
++    "node_modules/@esbuild/darwin-x64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.21.5.tgz",
++      "integrity": "sha512-se/JjF8NlmKVG4kNIuyWMV/22ZaerB+qaSi5MdrXtd6R08kvs2qCN4C09miupktDitvh8jRFflwGFBQcxZRjbw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/freebsd-arm64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.21.5.tgz",
++      "integrity": "sha512-5JcRxxRDUJLX8JXp/wcBCy3pENnCgBR9bN6JsY4OmhfUtIHe3ZW0mawA7+RDAcMLrMIZaf03NlQiX9DGyB8h4g==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/freebsd-x64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.21.5.tgz",
++      "integrity": "sha512-J95kNBj1zkbMXtHVH29bBriQygMXqoVQOQYA+ISs0/2l3T9/kj42ow2mpqerRBxDJnmkUDCaQT/dfNXWX/ZZCQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-arm": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.21.5.tgz",
++      "integrity": "sha512-bPb5AHZtbeNGjCKVZ9UGqGwo8EUu4cLq68E95A53KlxAPRmUyYv2D6F0uUI65XisGOL1hBP5mTronbgo+0bFcA==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-arm64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.21.5.tgz",
++      "integrity": "sha512-ibKvmyYzKsBeX8d8I7MH/TMfWDXBF3db4qM6sy+7re0YXya+K1cem3on9XgdT2EQGMu4hQyZhan7TeQ8XkGp4Q==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-ia32": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.21.5.tgz",
++      "integrity": "sha512-YvjXDqLRqPDl2dvRODYmmhz4rPeVKYvppfGYKSNGdyZkA01046pLWyRKKI3ax8fbJoK5QbxblURkwK/MWY18Tg==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-loong64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.21.5.tgz",
++      "integrity": "sha512-uHf1BmMG8qEvzdrzAqg2SIG/02+4/DHB6a9Kbya0XDvwDEKCoC8ZRWI5JJvNdUjtciBGFQ5PuBlpEOXQj+JQSg==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-mips64el": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.21.5.tgz",
++      "integrity": "sha512-IajOmO+KJK23bj52dFSNCMsz1QP1DqM6cwLUv3W1QwyxkyIWecfafnI555fvSGqEKwjMXVLokcV5ygHW5b3Jbg==",
++      "cpu": [
++        "mips64el"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-ppc64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.21.5.tgz",
++      "integrity": "sha512-1hHV/Z4OEfMwpLO8rp7CvlhBDnjsC3CttJXIhBi+5Aj5r+MBvy4egg7wCbe//hSsT+RvDAG7s81tAvpL2XAE4w==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-riscv64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.21.5.tgz",
++      "integrity": "sha512-2HdXDMd9GMgTGrPWnJzP2ALSokE/0O5HhTUvWIbD3YdjME8JwvSCnNGBnTThKGEB91OZhzrJ4qIIxk/SBmyDDA==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-s390x": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.21.5.tgz",
++      "integrity": "sha512-zus5sxzqBJD3eXxwvjN1yQkRepANgxE9lgOW2qLnmr8ikMTphkjgXu1HR01K4FJg8h1kEEDAqDcZQtbrRnB41A==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/linux-x64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.21.5.tgz",
++      "integrity": "sha512-1rYdTpyv03iycF1+BhzrzQJCdOuAOtaqHTWJZCWvijKD2N5Xu0TtVC8/+1faWqcP9iBCWOmjmhoH94dH82BxPQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/netbsd-x64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.21.5.tgz",
++      "integrity": "sha512-Woi2MXzXjMULccIwMnLciyZH4nCIMpWQAs049KEeMvOcNADVxo0UBIQPfSmxB3CWKedngg7sWZdLvLczpe0tLg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/openbsd-x64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.21.5.tgz",
++      "integrity": "sha512-HLNNw99xsvx12lFBUwoT8EVCsSvRNDVxNpjZ7bPn947b8gJPzeHWyNVhFsaerc0n3TsbOINvRP2byTZ5LKezow==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/sunos-x64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.21.5.tgz",
++      "integrity": "sha512-6+gjmFpfy0BHU5Tpptkuh8+uw3mnrvgs+dSPQXQOv3ekbordwnzTVEb4qnIvQcYXq6gzkyTnoZ9dZG+D4garKg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "sunos"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/win32-arm64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.21.5.tgz",
++      "integrity": "sha512-Z0gOTd75VvXqyq7nsl93zwahcTROgqvuAcYDUr+vOv8uHhNSKROyU961kgtCD1e95IqPKSQKH7tBTslnS3tA8A==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/win32-ia32": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.21.5.tgz",
++      "integrity": "sha512-SWXFF1CL2RVNMaVs+BBClwtfZSvDgtL//G/smwAc5oVK/UPu2Gu9tIaRgFmYFFKrmg3SyAjSrElf0TiJ1v8fYA==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild/win32-x64": {
++      "version": "0.21.5",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.21.5.tgz",
++      "integrity": "sha512-tQd/1efJuzPC6rCFwEvLtci/xNFcTZknmXs98FYDfGE4wP9ClFV98nyKrzJKVPMhdDnjzLhdUyMX4PsQAPjwIw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
+     "node_modules/@jridgewell/gen-mapping": {
+       "version": "0.3.13",
+       "resolved": "https://registry.npmjs.org/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz",
+@@ -358,6 +733,34 @@
+       "integrity": "sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==",
+       "dev": true
+     },
++    "node_modules/@rollup/rollup-android-arm-eabi": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-android-arm-eabi/-/rollup-android-arm-eabi-4.57.1.tgz",
++      "integrity": "sha512-A6ehUVSiSaaliTxai040ZpZ2zTevHYbvu/lDoeAteHI8QnaosIzm4qwtezfRg1jOYaUmnzLX1AOD6Z+UJjtifg==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ]
++    },
++    "node_modules/@rollup/rollup-android-arm64": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-android-arm64/-/rollup-android-arm64-4.57.1.tgz",
++      "integrity": "sha512-dQaAddCY9YgkFHZcFNS/606Exo8vcLHwArFZ7vxXq4rigo2bb494/xKMMwRRQW6ug7Js6yXmBZhSBRuBvCCQ3w==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ]
++    },
+     "node_modules/@rollup/rollup-darwin-arm64": {
+       "version": "4.57.1",
+       "resolved": "https://registry.npmjs.org/@rollup/rollup-darwin-arm64/-/rollup-darwin-arm64-4.57.1.tgz",
+@@ -371,6 +774,314 @@
+         "darwin"
+       ]
+     },
++    "node_modules/@rollup/rollup-darwin-x64": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-darwin-x64/-/rollup-darwin-x64-4.57.1.tgz",
++      "integrity": "sha512-Ji8g8ChVbKrhFtig5QBV7iMaJrGtpHelkB3lsaKzadFBe58gmjfGXAOfI5FV0lYMH8wiqsxKQ1C9B0YTRXVy4w==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ]
++    },
++    "node_modules/@rollup/rollup-freebsd-arm64": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-freebsd-arm64/-/rollup-freebsd-arm64-4.57.1.tgz",
++      "integrity": "sha512-R+/WwhsjmwodAcz65guCGFRkMb4gKWTcIeLy60JJQbXrJ97BOXHxnkPFrP+YwFlaS0m+uWJTstrUA9o+UchFug==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ]
++    },
++    "node_modules/@rollup/rollup-freebsd-x64": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-freebsd-x64/-/rollup-freebsd-x64-4.57.1.tgz",
++      "integrity": "sha512-IEQTCHeiTOnAUC3IDQdzRAGj3jOAYNr9kBguI7MQAAZK3caezRrg0GxAb6Hchg4lxdZEI5Oq3iov/w/hnFWY9Q==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-arm-gnueabihf": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm-gnueabihf/-/rollup-linux-arm-gnueabihf-4.57.1.tgz",
++      "integrity": "sha512-F8sWbhZ7tyuEfsmOxwc2giKDQzN3+kuBLPwwZGyVkLlKGdV1nvnNwYD0fKQ8+XS6hp9nY7B+ZeK01EBUE7aHaw==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-arm-musleabihf": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm-musleabihf/-/rollup-linux-arm-musleabihf-4.57.1.tgz",
++      "integrity": "sha512-rGfNUfn0GIeXtBP1wL5MnzSj98+PZe/AXaGBCRmT0ts80lU5CATYGxXukeTX39XBKsxzFpEeK+Mrp9faXOlmrw==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-arm64-gnu": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm64-gnu/-/rollup-linux-arm64-gnu-4.57.1.tgz",
++      "integrity": "sha512-MMtej3YHWeg/0klK2Qodf3yrNzz6CGjo2UntLvk2RSPlhzgLvYEB3frRvbEF2wRKh1Z2fDIg9KRPe1fawv7C+g==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-arm64-musl": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm64-musl/-/rollup-linux-arm64-musl-4.57.1.tgz",
++      "integrity": "sha512-1a/qhaaOXhqXGpMFMET9VqwZakkljWHLmZOX48R0I/YLbhdxr1m4gtG1Hq7++VhVUmf+L3sTAf9op4JlhQ5u1Q==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-loong64-gnu": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-loong64-gnu/-/rollup-linux-loong64-gnu-4.57.1.tgz",
++      "integrity": "sha512-QWO6RQTZ/cqYtJMtxhkRkidoNGXc7ERPbZN7dVW5SdURuLeVU7lwKMpo18XdcmpWYd0qsP1bwKPf7DNSUinhvA==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-loong64-musl": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-loong64-musl/-/rollup-linux-loong64-musl-4.57.1.tgz",
++      "integrity": "sha512-xpObYIf+8gprgWaPP32xiN5RVTi/s5FCR+XMXSKmhfoJjrpRAjCuuqQXyxUa/eJTdAE6eJ+KDKaoEqjZQxh3Gw==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-ppc64-gnu": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-ppc64-gnu/-/rollup-linux-ppc64-gnu-4.57.1.tgz",
++      "integrity": "sha512-4BrCgrpZo4hvzMDKRqEaW1zeecScDCR+2nZ86ATLhAoJ5FQ+lbHVD3ttKe74/c7tNT9c6F2viwB3ufwp01Oh2w==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-ppc64-musl": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-ppc64-musl/-/rollup-linux-ppc64-musl-4.57.1.tgz",
++      "integrity": "sha512-NOlUuzesGauESAyEYFSe3QTUguL+lvrN1HtwEEsU2rOwdUDeTMJdO5dUYl/2hKf9jWydJrO9OL/XSSf65R5+Xw==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-riscv64-gnu": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-riscv64-gnu/-/rollup-linux-riscv64-gnu-4.57.1.tgz",
++      "integrity": "sha512-ptA88htVp0AwUUqhVghwDIKlvJMD/fmL/wrQj99PRHFRAG6Z5nbWoWG4o81Nt9FT+IuqUQi+L31ZKAFeJ5Is+A==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-riscv64-musl": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-riscv64-musl/-/rollup-linux-riscv64-musl-4.57.1.tgz",
++      "integrity": "sha512-S51t7aMMTNdmAMPpBg7OOsTdn4tySRQvklmL3RpDRyknk87+Sp3xaumlatU+ppQ+5raY7sSTcC2beGgvhENfuw==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-s390x-gnu": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-s390x-gnu/-/rollup-linux-s390x-gnu-4.57.1.tgz",
++      "integrity": "sha512-Bl00OFnVFkL82FHbEqy3k5CUCKH6OEJL54KCyx2oqsmZnFTR8IoNqBF+mjQVcRCT5sB6yOvK8A37LNm/kPJiZg==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-x64-gnu": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.57.1.tgz",
++      "integrity": "sha512-ABca4ceT4N+Tv/GtotnWAeXZUZuM/9AQyCyKYyKnpk4yoA7QIAuBt6Hkgpw8kActYlew2mvckXkvx0FfoInnLg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-linux-x64-musl": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.57.1.tgz",
++      "integrity": "sha512-HFps0JeGtuOR2convgRRkHCekD7j+gdAuXM+/i6kGzQtFhlCtQkpwtNzkNj6QhCDp7DRJ7+qC/1Vg2jt5iSOFw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ]
++    },
++    "node_modules/@rollup/rollup-openbsd-x64": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-openbsd-x64/-/rollup-openbsd-x64-4.57.1.tgz",
++      "integrity": "sha512-H+hXEv9gdVQuDTgnqD+SQffoWoc0Of59AStSzTEj/feWTBAnSfSD3+Dql1ZruJQxmykT/JVY0dE8Ka7z0DH1hw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ]
++    },
++    "node_modules/@rollup/rollup-openharmony-arm64": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-openharmony-arm64/-/rollup-openharmony-arm64-4.57.1.tgz",
++      "integrity": "sha512-4wYoDpNg6o/oPximyc/NG+mYUejZrCU2q+2w6YZqrAs2UcNUChIZXjtafAiiZSUc7On8v5NyNj34Kzj/Ltk6dQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openharmony"
++      ]
++    },
++    "node_modules/@rollup/rollup-win32-arm64-msvc": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-arm64-msvc/-/rollup-win32-arm64-msvc-4.57.1.tgz",
++      "integrity": "sha512-O54mtsV/6LW3P8qdTcamQmuC990HDfR71lo44oZMZlXU4tzLrbvTii87Ni9opq60ds0YzuAlEr/GNwuNluZyMQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ]
++    },
++    "node_modules/@rollup/rollup-win32-ia32-msvc": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-ia32-msvc/-/rollup-win32-ia32-msvc-4.57.1.tgz",
++      "integrity": "sha512-P3dLS+IerxCT/7D2q2FYcRdWRl22dNbrbBEtxdWhXrfIMPP9lQhb5h4Du04mdl5Woq05jVCDPCMF7Ub0NAjIew==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ]
++    },
++    "node_modules/@rollup/rollup-win32-x64-gnu": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-x64-gnu/-/rollup-win32-x64-gnu-4.57.1.tgz",
++      "integrity": "sha512-VMBH2eOOaKGtIJYleXsi2B8CPVADrh+TyNxJ4mWPnKfLB/DBUmzW+5m1xUrcwWoMfSLagIRpjUFeW5CO5hyciQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ]
++    },
++    "node_modules/@rollup/rollup-win32-x64-msvc": {
++      "version": "4.57.1",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-x64-msvc/-/rollup-win32-x64-msvc-4.57.1.tgz",
++      "integrity": "sha512-mxRFDdHIWRxg3UfIIAwCm6NzvxG0jDX/wBN6KsQFTvKFqqg9vTrWUE68qEjHt19A5wwx5X5aUi2zuZT7YR0jrA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ]
++    },
+     "node_modules/@types/babel__core": {
+       "version": "7.20.5",
+       "resolved": "https://registry.npmjs.org/@types/babel__core/-/babel__core-7.20.5.tgz",
+@@ -429,6 +1140,7 @@
+       "resolved": "https://registry.npmjs.org/@types/react/-/react-18.3.28.tgz",
+       "integrity": "sha512-z9VXpC7MWrhfWipitjNdgCauoMLRdIILQsAEV+ZesIzBq/oUlxk0m3ApZuMFCXdnS4U7KrI+l3WRUEGQ8K1QKw==",
+       "dev": true,
++      "peer": true,
+       "dependencies": {
+         "@types/prop-types": "*",
+         "csstype": "^3.2.2"
+@@ -491,6 +1203,7 @@
+           "url": "https://github.com/sponsors/ai"
+         }
+       ],
++      "peer": true,
+       "dependencies": {
+         "baseline-browser-mapping": "^2.9.0",
+         "caniuse-lite": "^1.0.30001759",
+@@ -747,6 +1460,7 @@
+       "version": "18.3.1",
+       "resolved": "https://registry.npmjs.org/react/-/react-18.3.1.tgz",
+       "integrity": "sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==",
++      "peer": true,
+       "dependencies": {
+         "loose-envify": "^1.1.0"
+       },
+@@ -758,6 +1472,7 @@
+       "version": "18.3.1",
+       "resolved": "https://registry.npmjs.org/react-dom/-/react-dom-18.3.1.tgz",
+       "integrity": "sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw==",
++      "peer": true,
+       "dependencies": {
+         "loose-envify": "^1.1.0",
+         "scheduler": "^0.23.2"
+@@ -923,6 +1638,7 @@
+       "resolved": "https://registry.npmjs.org/vite/-/vite-5.4.21.tgz",
+       "integrity": "sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw==",
+       "dev": true,
++      "peer": true,
+       "dependencies": {
+         "esbuild": "^0.21.3",
+         "postcss": "^8.4.43",
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 382bfe9..b346545 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -2,11 +2,13 @@ import React, { useState } from "react";
+ import Sidebar from "./components/Sidebar";
+ import HistoryPage from "./pages/HistoryPage";
+ import { COLORS } from "./constants/colors";
++import { Modal } from "./vibes";
++import { CategoryForm } from "./components/CategoryForm";
+ 
+ function App() {
+   const [currentPage, setCurrentPage] = useState("history");
+   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+-
++  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
+   const appStyle: React.CSSProperties = {
+     display: "flex",
+     minHeight: "100vh",
+@@ -30,7 +32,20 @@ function App() {
+         onNavigate={setCurrentPage}
+         isCollapsed={isSidebarCollapsed}
+         onToggleCollapse={handleToggleSidebar}
++        onAddCategory={() => setIsAddCategoryModalOpen(true)}
+       />
++      <Modal
++        isOpen={isAddCategoryModalOpen}
++        onClose={() => setIsAddCategoryModalOpen(false)}
++        title="Add New Category"
++      >
++        <div style={{ padding: "1rem 0" }}>
++          <CategoryForm
++            onSuccess={() => setIsAddCategoryModalOpen(false)}
++            onCancel={() => setIsAddCategoryModalOpen(false)}
++          />
++        </div>
++      </Modal>
+       <main style={mainStyle}>
+         {currentPage === "history" && <HistoryPage />}
+       </main>
+diff --git a/frontend/src/components/CategoryForm.tsx b/frontend/src/components/CategoryForm.tsx
+new file mode 100644
+index 0000000..6936c80
+--- /dev/null
++++ b/frontend/src/components/CategoryForm.tsx
+@@ -0,0 +1,80 @@
++import React, { useState } from "react";
++import { TextField, Button } from "../vibes";
++import { createCategory } from "../services/api";
++
++interface CategoryFormProps {
++    onSuccess: () => void;
++    onCancel: () => void;
++}
++
++export function CategoryForm({ onSuccess, onCancel }: CategoryFormProps) {
++    const [name, setName] = useState("");
++    const [isSubmitting, setIsSubmitting] = useState(false);
++    const [error, setError] = useState<string | null>(null);
++
++    const handleSubmit = async (e: React.FormEvent) => {
++        e.preventDefault();
++        if (!name.trim()) return;
++
++        setIsSubmitting(true);
++        setError(null);
++
++        try {
++            await createCategory(name.trim());
++            onSuccess();
++            // Optional: Since categories are used in the expense form, 
++            // you might want to trigger a global refresh or just notify the user.
++            alert("Category added successfully!");
++            window.location.reload();
++        } catch (err: any) {
++            setError(err.message || "Failed to create category");
++        } finally {
++            setIsSubmitting(false);
++        }
++    };
++
++    const formStyle: React.CSSProperties = {
++        display: "flex",
++        flexDirection: "column",
++        gap: "1rem",
++    };
++
++    const buttonGroupStyle: React.CSSProperties = {
++        display: "flex",
++        gap: "0.5rem",
++        marginTop: "0.5rem",
++    };
++
++    return (
++        <form onSubmit={handleSubmit} style={formStyle}>
++            <TextField
++                label="Category Name"
++                placeholder="e.g., Healthcare, Subscriptions"
++                value={name}
++                onChange={(e) => setName(e.target.value)}
++                error={error || undefined}
++                fullWidth
++                required
++            />
++
++            <div style={buttonGroupStyle}>
++                <Button
++                    type="submit"
++                    variant="primary"
++                    disabled={isSubmitting || !name.trim()}
++                    fullWidth
++                >
++                    {isSubmitting ? "Saving..." : "Save Category"}
++                </Button>
++                <Button
++                    type="button"
++                    variant="secondary"
++                    onClick={onCancel}
++                    disabled={isSubmitting}
++                >
++                    Cancel
++                </Button>
++            </div>
++        </form>
++    );
++}
+diff --git a/frontend/src/components/ExpenseForm.tsx b/frontend/src/components/ExpenseForm.tsx
+index 676c977..996db53 100644
+--- a/frontend/src/components/ExpenseForm.tsx
++++ b/frontend/src/components/ExpenseForm.tsx
+@@ -2,11 +2,12 @@
+  * Form component for adding/editing expenses
+  */
+ 
+-import React from "react";
++import React, { useState, useEffect } from "react";
+ import { ExpenseFormData } from "../types";
+-import { EXPENSE_CATEGORIES } from "../constants/categories";
+ import { TextField, SelectBox, Button } from "../vibes";
+ import { useExpenseForm } from "../hooks/useExpenseForm";
++import { fetchCategories } from "../services/api";
++
+ 
+ interface ExpenseFormProps {
+   initialData?: Partial<ExpenseFormData>;
+@@ -26,6 +27,21 @@ export function ExpenseForm({
+       initialData,
+       onSubmit,
+     });
++  const [categories, setCategories] = useState<string[]>([]);
++
++  useEffect(() => {
++    const loadCategories = async () => {
++      try {
++        const data = await fetchCategories();
++        // Extract just the names into an array
++        setCategories(data.map(c => c.name));
++      } catch (error) {
++        console.error("Failed to load categories:", error);
++      }
++    };
++    loadCategories();
++  }, []);
++
+ 
+   const formStyle: React.CSSProperties = {
+     display: "flex",
+@@ -39,7 +55,7 @@ export function ExpenseForm({
+     marginTop: "0.5rem",
+   };
+ 
+-  const categoryOptions = EXPENSE_CATEGORIES.map((category) => ({
++  const categoryOptions = categories.map((category) => ({
+     value: category,
+     label: category,
+   }));
+@@ -87,6 +103,7 @@ export function ExpenseForm({
+         error={errors.date}
+         fullWidth
+         required
++        max={new Date().toISOString().split("T")[0]}
+       />
+ 
+       <div style={buttonGroupStyle}>
+diff --git a/frontend/src/components/Sidebar.tsx b/frontend/src/components/Sidebar.tsx
+index 893e00f..44bcc42 100644
+--- a/frontend/src/components/Sidebar.tsx
++++ b/frontend/src/components/Sidebar.tsx
+@@ -3,6 +3,7 @@ import { COLORS } from "../constants/colors";
+ 
+ interface SidebarProps {
+   onNavigate?: (page: string) => void;
++  onAddCategory?: () => void;
+   currentPage?: string;
+   isCollapsed?: boolean;
+   onToggleCollapse?: () => void;
+@@ -10,6 +11,7 @@ interface SidebarProps {
+ 
+ const Sidebar: React.FC<SidebarProps> = ({
+   onNavigate,
++  onAddCategory,
+   currentPage = "history",
+   isCollapsed = false,
+   onToggleCollapse,
+@@ -168,6 +170,29 @@ const Sidebar: React.FC<SidebarProps> = ({
+           </svg>
+           <span style={navTextStyle}>History</span>
+         </button>
++
++        <button
++          style={navItemStyle}
++          onClick={onAddCategory}
++          onMouseEnter={(e) => {
++            e.currentTarget.style.background = COLORS.primary.p02;
++          }}
++          onMouseLeave={(e) => {
++            e.currentTarget.style.background = "transparent";
++          }}
++        >
++          <svg
++            width="24"
++            height="24"
++            viewBox="0 0 24 24"
++            fill="none"
++            stroke="currentColor"
++            strokeWidth="2"
++          >
++            <path d="M12 5v14M5 12h14" />
++          </svg>
++          <span style={navTextStyle}>Add Category</span>
++        </button>
+       </nav>
+     </aside>
+   );
+diff --git a/frontend/src/hooks/useExpenseForm.ts b/frontend/src/hooks/useExpenseForm.ts
+index 5d157ea..223c8df 100644
+--- a/frontend/src/hooks/useExpenseForm.ts
++++ b/frontend/src/hooks/useExpenseForm.ts
+@@ -47,6 +47,15 @@ export function useExpenseForm({ initialData, onSubmit }: UseExpenseFormProps) {
+ 
+     if (!formData.date) {
+       newErrors.date = "Date is required";
++    } else {
++      const selectedDate = new Date(formData.date);
++      const today = new Date();
++      // Set hours to 0 to only compare the actual calendar day
++      today.setHours(0, 0, 0, 0);
++
++      if (selectedDate > today) {
++        newErrors.date = "Expense date cannot be in the future";
++      }
+     }
+ 
+     setErrors(newErrors);
+diff --git a/frontend/src/services/api.ts b/frontend/src/services/api.ts
+index 46f4c23..431527b 100644
+--- a/frontend/src/services/api.ts
++++ b/frontend/src/services/api.ts
+@@ -110,3 +110,26 @@ export async function deleteExpense(id: number): Promise<void> {
+     throw new Error("Failed to delete expense");
+   }
+ }
++
++
++/**
++ * Create a new category
++ */
++
++export async function createCategory(name: string): Promise<{ id: number, name: string }> {
++  const response = await fetch(`${API_BASE_URL}/categories`, {
++    method: "POST",
++    headers: {
++      "Content-Type": "application/json",
++    },
++    body: JSON.stringify({ category: { name } }),
++  });
++
++  if (!response.ok) {
++    const errorData = await response.json();
++    throw new Error(errorData.errors?.[0] || "Failed to create category");
++  }
++
++  return response.json();
++}
++

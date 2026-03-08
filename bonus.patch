@@ -1,0 +1,51 @@
+﻿diff --git a/backend/app/models/expense.rb b/backend/app/models/expense.rb
+index a161c45..45c1c06 100644
+--- a/backend/app/models/expense.rb
++++ b/backend/app/models/expense.rb
+@@ -1,3 +1,14 @@
+ class Expense < ApplicationRecord
+   belongs_to :category
++
++  validates :description, :amount, :date, presence: true
++  validate :date_cannot_be_in_the_future # Check professional logic here!
++
++  private
++
++  def date_cannot_be_in_the_future
++    if date.present? && date > Date.current
++      errors.add(:date, "cannot be in the future. You can't spend money tomorrow today!")
++    end
++  end
+ end
+diff --git a/frontend/src/components/ExpenseForm.tsx b/frontend/src/components/ExpenseForm.tsx
+index 676c977..e5796d0 100644
+--- a/frontend/src/components/ExpenseForm.tsx
++++ b/frontend/src/components/ExpenseForm.tsx
+@@ -87,6 +87,7 @@ export function ExpenseForm({
+         error={errors.date}
+         fullWidth
+         required
++        max={new Date().toISOString().split("T")[0]}
+       />
+ 
+       <div style={buttonGroupStyle}>
+diff --git a/frontend/src/hooks/useExpenseForm.ts b/frontend/src/hooks/useExpenseForm.ts
+index 5d157ea..223c8df 100644
+--- a/frontend/src/hooks/useExpenseForm.ts
++++ b/frontend/src/hooks/useExpenseForm.ts
+@@ -47,6 +47,15 @@ export function useExpenseForm({ initialData, onSubmit }: UseExpenseFormProps) {
+ 
+     if (!formData.date) {
+       newErrors.date = "Date is required";
++    } else {
++      const selectedDate = new Date(formData.date);
++      const today = new Date();
++      // Set hours to 0 to only compare the actual calendar day
++      today.setHours(0, 0, 0, 0);
++
++      if (selectedDate > today) {
++        newErrors.date = "Expense date cannot be in the future";
++      }
+     }
+ 
+     setErrors(newErrors);

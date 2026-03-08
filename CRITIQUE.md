@@ -1,19 +1,39 @@
 ### Bonus / Going Above and Beyond: System Critique
 
-Thank you for the opportunity to review the codebase! During my sprint, I identified a few key areas for future optimization, architectural improvements, and security:
+Thank you for the opportunity to review the codebase! During my sprint, I identified several key areas for future optimization, architectural improvements, and security. Beyond code changes, I also focused on improving the **Infrastructure and Developer Experience (DX)**.
+
+---
+
+### 🏛️ Architectural Improvements
 
 **1. React State Management & Over-fetching**
-Currently, `ExpenseForm` manually re-fetches the dynamic categories every time it mounts. As the application scales across multiple views (Dashboards, Settings, Analytics), localized state prop-drilling will become a performance bottleneck. 
-*Fix:* Moving away from localized state directly into a server-state library like TanStack Query (React Query) or Redux Toolkit will automatically cache, synchronize, and invalidate Categories and Expenses across the app, eliminating redundant network requests and the need for hard reloads.
+Currently, `ExpenseForm` manually re-fetches dynamic categories every time it mounts. As the application scales, localized state prop-drilling will become a performance bottleneck.
+*   **Recommendation:** Implementing a server-state library like **TanStack Query (React Query)** or **Redux Toolkit** would allow for automatic caching and synchronization of Categories and Expenses across the app, eliminating redundant network requests.
 
 **2. Pagination / Lazy Loading Data**
-The backend `Api::ExpensesController#index` currently sends the entire month's ledger in one massive JSON response. If a user logs 500 expenses in a month, rendering them all simultaneously into the DOM will freeze the browser's main thread.
-*Fix:* Implement Server-Side Pagination using a gem like `pagy` or `kaminari` on the Rails controller, alongside an Infinite Scroll or explicit pagination in React to keep the initial page load blazing fast.
+The backend currently sends the entire month's ledger in one massive JSON response. Large datasets would eventually freeze the browser's main thread during rendering.
+*   **Recommendation:** Implement Server-Side Pagination using gems like `pagy` or `kaminari`, paired with Infinite Scroll or explicit pagination in the React frontend to maintain performance.
 
 **3. API Serialization & Payload Bloat**
-Right now, `render json: expenses` returns the full database record, including internal Rails timestamps (`created_at`, `updated_at`) which bloats the network payload.
-*Fix:* The Rails models should implement explicit serializers (e.g., `ActiveModel::Serializers`, `Jbuilder`, or Netflix's `fast_jsonapi`) to strictly control the payload, only sending the exact fields React needs.
+The API currently returns full database records, including internal Rails timestamps, which increases payload size.
+*   **Recommendation:** Use explicit serializers (e.g., `Jbuilder`, `ActiveModel::Serializers`, or `fast_jsonapi`) to strictly control the fields sent to the frontend, reducing network overhead.
 
-**4. Security: Environment Variables (Addressed)**
-During development, I noticed that `config/database.yml` relied on a hardcoded blank fallback for the database password. 
-*Fix:* I removed the empty fallback and bundled the `dotenv-rails` gem to enforce strict environment configuration, adhering to standard Twelve-Factor App deployment methodologies.
+---
+
+### 🛠️ Infrastructure & Developer Experience (DX)
+
+I took the initiative to harden the development environment and ensure a seamless "out-of-the-box" setup for other developers:
+
+**4. Docker & WSL Compatibility (Fixed)**
+The initial setup lacked dependencies for building the `psych` gem on certain Linux distributions.
+*   **Fix:** Updated the `Dockerfile` to include `libyaml-dev` and normalized entrypoint execution to handle Windows CRLF line-ending conflicts, ensuring the project starts reliably on both Windows (WSL) and Linux.
+
+**5. Port Conflict Management (Fixed)**
+Mapping the database to the default `3306` can fail if a developer has a local MySQL instance running.
+*   **Fix:** Mapped the host port to **`3307`**, providing a conflict-free environment while keeping the internal container architecture intact.
+
+**6. Security: Environment Variables (Fixed)**
+`config/database.yml` relied on insecure hardcoded blank fallbacks for passwords.
+*   **Fix:** Bundled `dotenv-rails` and refactored the database configuration to enforce strict environment variable usage, adhering to standard **Twelve-Factor App** methodologies.
+
+---

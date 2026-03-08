@@ -2,11 +2,13 @@ import React, { useState } from "react";
 import Sidebar from "./components/Sidebar";
 import HistoryPage from "./pages/HistoryPage";
 import { COLORS } from "./constants/colors";
+import { Modal } from "./vibes";
+import { CategoryForm } from "./components/CategoryForm";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("history");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
+  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const appStyle: React.CSSProperties = {
     display: "flex",
     minHeight: "100vh",
@@ -30,7 +32,20 @@ function App() {
         onNavigate={setCurrentPage}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
+        onAddCategory={() => setIsAddCategoryModalOpen(true)}
       />
+      <Modal
+        isOpen={isAddCategoryModalOpen}
+        onClose={() => setIsAddCategoryModalOpen(false)}
+        title="Add New Category"
+      >
+        <div style={{ padding: "1rem 0" }}>
+          <CategoryForm
+            onSuccess={() => setIsAddCategoryModalOpen(false)}
+            onCancel={() => setIsAddCategoryModalOpen(false)}
+          />
+        </div>
+      </Modal>
       <main style={mainStyle}>
         {currentPage === "history" && <HistoryPage />}
       </main>

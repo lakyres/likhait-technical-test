@@ -2,9 +2,9 @@ require 'rails_helper'
 
 RSpec.describe "Api::Categories", type: :request do
   describe "GET /api/categories" do
-    let!(:food) { Category.create!(name: "Food") }
-    let!(:transport) { Category.create!(name: "Transport") }
-    let!(:supplies) { Category.create!(name: "Supplies") }
+    let!(:food) { Category.find_or_create_by!(name: "Food") }
+    let!(:transport) { Category.find_or_create_by!(name: "Transport") }
+    let!(:supplies) { Category.find_or_create_by!(name: "Supplies") }
 
     it "returns all categories" do
       get "/api/categories"
